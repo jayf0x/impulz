@@ -1,0 +1,40 @@
+{
+  "name": "impulz",
+  "version": "0.1.0",
+  "description": "Zero-dependency browser performance monitors: visibility, FPS, and idle signals",
+  "keywords": ["fps", "visibility", "idle", "performance", "monitor", "browser"],
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "import": "./dist/src/index.js",
+      "types": "./dist/src/index.d.ts"
+    },
+    "./react": {
+      "import": "./dist/react/usePulse.js",
+      "types": "./dist/react/usePulse.d.ts"
+    }
+  },
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "typescript": "^5.4.0"
+  },
+  "peerDependencies": {
+    "react": ">=17"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  }
+}

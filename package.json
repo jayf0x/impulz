@@ -1,0 +1,10 @@
+{
+  "name": "impulz-workspace",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "build": "npm run build --workspace=packages/pulse",
+    "dev": "npm run dev --workspace=packages/pulse",
+    "typecheck": "npm run typecheck --workspace=packages/pulse"
+  }
+}
