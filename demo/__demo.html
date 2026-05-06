@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>impulz — browser performance monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=DM+Sans:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #080808;
+      --surface: #101010;
+      --surface2: #161616;
+      --border: rgba(255,255,255,0.07);
+      --text: #d8d8d8;
+      --muted: #484848;
+      --green: #4ade80;
+      --amber: #f59e0b;
+      --red: #ef4444;
+      --orange: #f97316;
+      --mono: 'JetBrains Mono', monospace;
+      --sans: 'DM Sans', sans-serif;
+    }
+
+    html { background: var(--bg); color: var(--text); font-family: var(--sans); }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 36px 16px 56px;
+      gap: 20px;
+    }
+
+    /* ── Header ── */
+    header { text-align: center; }
+    header h1 {
+      font-family: var(--mono);
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      color: var(--green);
+      text-transform: uppercase;
+    }
+    header p {
+      font-family: var(--sans);
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-top: 5px;
+      letter-spacing: 0.03em;
+    }
+
+    /* ── Canvas wrapper ── */
+    .canvas-wrap {
+      position: relative;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow:
+        0 0 0 1px var(--border),
+        0 0 60px rgba(74, 222, 128, 0.04),
+        0 40px 100px rgba(0,0,0,0.7);
+    }
+    canvas { display: block; background: #080808; }
+
+    /* ── Modal overlay ── */
+    .modal-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.52);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .modal-overlay.active { opacity: 1; pointer-events: auto; }
+
+    .modal-card {
+      background: rgba(12, 12, 12, 0.97);
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 14px;
+      padding: 30px 38px;
+      min-width: 310px;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.03),
+        0 28px 72px rgba(0,0,0,0.8),
+        inset 0 1px 0 rgba(255,255,255,0.05);
+    }
+    .modal-eyebrow {
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .modal-title {
+      font-family: var(--mono);
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--green);
+      margin-bottom: 22px;
+      line-height: 1.2;
+    }
+    .modal-sync-label {
+      font-family: var(--sans);
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .modal-sync-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse-dot 1s ease infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.7); }
+    }
+    .modal-track {
+      height: 5px;
+      background: rgba(255,255,255,0.07);
+      border-radius: 99px;
+      overflow: hidden;
+      margin-bottom: 9px;
+    }
+    .modal-bar {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #22c55e, #4ade80);
+      border-radius: 99px;
+    }
+    .modal-countdown {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--muted);
+      text-align: right;
+    }
+
+    /* ── Controls ── */
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      width: 700px;
+    }
+    .control-label {
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+      color: var(--muted);
+      white-space: nowrap;
+      min-width: 130px;
+    }
+    .control-label strong {
+      color: var(--text);
+      font-weight: 600;
+      margin-left: 7px;
+    }
+    input[type=range] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 3px;
+      background: rgba(255,255,255,0.09);
+      border-radius: 99px;
+      outline: none;
+      cursor: pointer;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 15px; height: 15px;
+      background: var(--green);
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 0 8px rgba(74,222,128,0.5);
+    }
+    input[type=range]::-moz-range-thumb {
+      width: 15px; height: 15px;
+      background: var(--green);
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+    }
+
+    /* ── Stats ── */
+    .stats {
+      display: flex;
+      gap: 10px;
+      width: 700px;
+    }
+    .stat {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 14px 16px 13px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .stat-label {
+      font-family: var(--mono);
+      font-size: 0.58rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .stat-value {
+      font-family: var(--mono);
+      font-size: 1.75rem;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--text);
+      transition: color 0.35s ease;
+    }
+    .stat-value.green  { color: var(--green); }
+    .stat-value.amber  { color: var(--amber); }
+    .stat-value.red    { color: var(--red); }
+    .stat-value.orange { color: var(--orange); }
+
+    /* ── Log ── */
+    .log-wrap { width: 700px; }
+    .log-header {
+      font-family: var(--mono);
+      font-size: 0.58rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .log {
+      background: rgba(0,0,0,0.35);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 10px 14px;
+      height: 138px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,0.08) transparent;
+    }
+    .log::-webkit-scrollbar { width: 3px; }
+    .log::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 99px; }
+    .log-entry {
+      display: flex;
+      gap: 12px;
+      padding: 3.5px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      line-height: 1.5;
+    }
+    .log-entry:last-child { border-bottom: none; }
+    .log-time { color: var(--muted); flex-shrink: 0; }
+    .log-msg  { color: #888; }
+    .hl   { color: var(--green); }
+    .warn { color: var(--amber); }
+    .bad  { color: var(--red); }
+    .lo   { color: var(--orange); }
+
+    /* ── Hint ── */
+    .hint {
+      font-family: var(--sans);
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-align: center;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>⚡ impulz</h1>
+    <p>zero-dependency browser performance monitors — visibility · fps · idle</p>
+  </header>
+
+  <div class="canvas-wrap">
+    <canvas id="c" width="700" height="400"></canvas>
+
+    <div class="modal-overlay" id="modal">
+      <div class="modal-card">
+        <div class="modal-eyebrow">Welcome back</div>
+        <div class="modal-title" id="modal-away">Away for 0s</div>
+        <div class="modal-sync-label">
+          <div class="modal-sync-dot"></div>
+          Syncing backup…
+        </div>
+        <div class="modal-track">
+          <div class="modal-bar" id="modal-bar"></div>
+        </div>
+        <div class="modal-countdown" id="modal-countdown">5.0s remaining</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="control-label">Particle count <strong id="slider-val">80</strong></div>
+    <input type="range" id="slider" min="50" max="50000" value="80" step="10" />
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label">FPS</div>
+      <div class="stat-value green" id="stat-fps">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Tier</div>
+      <div class="stat-value green" id="stat-tier">HIGH</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Particles</div>
+      <div class="stat-value" id="stat-particles">80</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Tab</div>
+      <div class="stat-value green" id="stat-tab">VISIBLE</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Idle</div>
+      <div class="stat-value green" id="stat-idle">ACTIVE</div>
+    </div>
+  </div>
+
+  <div class="log-wrap">
+    <div class="log-header">Event log</div>
+    <div class="log" id="log"></div>
+  </div>
+
+  <p class="hint">Switch tabs · drag slider to 800 · stop moving the mouse — watch the tiers react.</p>
+
+  <script type="module">
+
+const logEl      = document.getElementById('log');
+const sliderEl   = document.getElementById('slider');
+const sliderValEl = document.getElementById('slider-val');
+const modalEl    = document.getElementById('modal');
+const modalAwayEl = document.getElementById('modal-away');
+const modalBarEl  = document.getElementById('modal-bar');
+const modalCdEl   = document.getElementById('modal-countdown');
+
+// ─── 1. IMPULZ LIBRARY ─────────────────────────────────────────────────────
+
+function createVisibilityMonitor() {
+  const subscribers = new Map();
+  let started = false;
+
+  function handleChange() {
+    const visible = document.visibilityState === 'visible';
+    for (const sub of subscribers.values()) sub.cb(visible);
+  }
+
+  return {
+    start() {
+      if (started) return;
+      started = true;
+      document.addEventListener('visibilitychange', handleChange);
+    },
+    stop() {
+      if (!started) return;
+      started = false;
+      document.removeEventListener('visibilitychange', handleChange);
+    },
+    addSubscriber(id, sub) {
+      subscribers.set(id, sub);
+      sub.cb(document.visibilityState === 'visible');
+    },
+    removeSubscriber(id) { subscribers.delete(id); },
+    subscriberCount()    { return subscribers.size; },
+  };
+}
+
+function createFpsMonitor() {
+  const subscribers = new Map();
+  let rafHandle = 0, started = false;
+  const frameTimes = [];
+  let lastEmitTime = 0;
+
+  function tick(now) {
+    frameTimes.push(now);
+    if (frameTimes.length > 10) frameTimes.shift();
+
+    if (frameTimes.length >= 2 && now - lastEmitTime >= 500) {
+      lastEmitTime = now;
+      const elapsed = now - frameTimes[0];
+      const fps = Math.round(((frameTimes.length - 1) / elapsed) * 1000);
+      emit(fps);
+    }
+    if (started) rafHandle = requestAnimationFrame(tick);
+  }
+
+  function emit(fps) {
+    for (const sub of subscribers.values()) {
+      const opts = sub.options ?? {};
+      const meets =
+        (opts.below === undefined || fps < opts.below) &&
+        (opts.above === undefined || fps > opts.above);
+
+      if (!meets) { sub.conditionMet = false; continue; }
+      if (sub.conditionMet && sub.debounceTimer != null) continue;
+      sub.conditionMet = true;
+
+      const fire = () => { sub.debounceTimer = undefined; sub.cb(fps); };
+      if (opts.debounce > 0) {
+        clearTimeout(sub.debounceTimer);
+        sub.debounceTimer = setTimeout(fire, opts.debounce);
+      } else {
+        fire();
+      }
+    }
+  }
+
+  return {
+    start() {
+      if (started) return;
+      started = true;
+      frameTimes.length = 0;
+      lastEmitTime = 0;
+      rafHandle = requestAnimationFrame(tick);
+    },
+    stop() {
+      if (!started) return;
+      started = false;
+      cancelAnimationFrame(rafHandle);
+      for (const sub of subscribers.values()) {
+        clearTimeout(sub.debounceTimer);
+        sub.conditionMet = false;
+      }
+    },
+    addSubscriber(id, sub) { subscribers.set(id, sub); },
+    removeSubscriber(id) {
+      const sub = subscribers.get(id);
+      if (sub) { clearTimeout(sub.debounceTimer); subscribers.delete(id); }
+    },
+    subscriberCount() { return subscribers.size; },
+  };
+}
+
+// Idle monitor: debounced activity listener.
+// cb(true)  — user has been idle for `timeout` ms
+// cb(false) — user just became active again
+function createIdleMonitor() {
+  const subscribers = new Map();
+  const ACTIVITY_EVENTS = ['mousemove', 'keydown', 'scroll', 'touchstart', 'click', 'pointerdown'];
+
+  return {
+    start() {},
+    stop() {
+      for (const sub of subscribers.values()) sub._cleanup?.();
+    },
+    addSubscriber(id, sub) {
+      const timeout = sub.options?.timeout ?? 4000;
+      let timer = null;
+      let isIdle = false;
+
+      function onActivity() {
+        clearTimeout(timer);
+        if (isIdle) {
+          isIdle = false;
+          sub.cb(false);
+        }
+        timer = setTimeout(() => {
+          isIdle = true;
+          sub.cb(true);
+        }, timeout);
+      }
+
+      onActivity(); // start the first countdown immediately
+      for (const e of ACTIVITY_EVENTS)
+        window.addEventListener(e, onActivity, { passive: true });
+
+      sub._cleanup = () => {
+        clearTimeout(timer);
+        for (const e of ACTIVITY_EVENTS)
+          window.removeEventListener(e, onActivity);
+      };
+
+      subscribers.set(id, sub);
+    },
+    removeSubscriber(id) {
+      const sub = subscribers.get(id);
+      if (sub) { sub._cleanup?.(); subscribers.delete(id); }
+    },
+    subscriberCount() { return subscribers.size; },
+  };
+}
+
+function createPulse() {
+  const monitors = {
+    visibility: createVisibilityMonitor(),
+    fps:        createFpsMonitor(),
+    idle:       createIdleMonitor(),
+  };
+  const subSignals = new Map();
+
+  function addSub(signal, sub) {
+    const id = Symbol();
+    subSignals.set(id, signal);
+    const m = monitors[signal];
+    if (m.subscriberCount() === 0) m.start();
+    m.addSubscriber(id, sub);
+    return () => removeSub(id);
+  }
+
+  function removeSub(id) {
+    const signal = subSignals.get(id);
+    if (!signal) return;
+    subSignals.delete(id);
+    const m = monitors[signal];
+    m.removeSubscriber(id);
+    if (m.subscriberCount() === 0) m.stop();
+  }
+
+  return {
+    on(signal, optionsOrCb, maybeCb) {
+      if (signal === 'visibility') return addSub('visibility', { cb: optionsOrCb });
+      if (typeof optionsOrCb === 'function') return addSub(signal, { cb: optionsOrCb });
+      return addSub(signal, { cb: maybeCb, options: optionsOrCb });
+    },
+    off(signal) {
+      const ids = [...subSignals.entries()]
+        .filter(([, s]) => s === signal).map(([id]) => id);
+      ids.forEach(removeSub);
+    },
+    destroy() {
+      [...subSignals.keys()].forEach(removeSub);
+    },
+  };
+}
+
+
+// ─── 2. CANVAS RENDERER ────────────────────────────────────────────────────
+
+const W = 700, H = 400;
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+
+// Offscreen canvas for tier-0 pixelated rendering (25% scale)
+const offscreen = document.createElement('canvas');
+offscreen.width  = Math.floor(W / 4);  // 175
+offscreen.height = Math.floor(H / 4);  // 100
+const octx = offscreen.getContext('2d');
+
+// qualityTier: 0=LOW 1=MED 2=HIGH
+let qualityTier = 2;
+let paused      = false;
+let targetCount = 80;
+
+let circles = [];
+
+function ensureCircles() {
+  while (circles.length < targetCount) {
+    const r = 3 + Math.random() * 16;
+    circles.push({
+      x:   r + Math.random() * (W - r * 2),
+      y:   r + Math.random() * (H - r * 2),
+      r,
+      vx:  (Math.random() - 0.5) * 2.8,
+      vy:  (Math.random() - 0.5) * 2.8,
+      hue: Math.random() * 360,
+    });
+  }
+}
+ensureCircles();
+
+const TIER_INDICATOR_COLORS = ['#ef4444', '#f59e0b', '#4ade80'];
+
+function renderFrame() {
+  // LOW tier draws 30% of particles at 1/4 resolution — the real cost cut
+  const drawCount = qualityTier === 0
+    ? Math.max(8, Math.floor(targetCount * 0.3))
+    : targetCount;
+
+  // Update positions for all active circles
+  for (let i = 0; i < targetCount; i++) {
+    const c = circles[i];
+    c.x += c.vx;
+    c.y += c.vy;
+    if (c.x - c.r < 0)  { c.vx =  Math.abs(c.vx); c.x = c.r; }
+    else if (c.x + c.r > W) { c.vx = -Math.abs(c.vx); c.x = W - c.r; }
+    if (c.y - c.r < 0)  { c.vy =  Math.abs(c.vy); c.y = c.r; }
+    else if (c.y + c.r > H) { c.vy = -Math.abs(c.vy); c.y = H - c.r; }
+    if (qualityTier === 2) c.hue = (c.hue + 0.35) % 360;
+  }
+
+  if (qualityTier === 0) {
+    // CRITICAL: draw at 1/4 scale, scale back up — no smoothing = pixelated
+    const scale = offscreen.width / W;
+    octx.fillStyle = '#080808';
+    octx.fillRect(0, 0, offscreen.width, offscreen.height);
+
+    for (let i = 0; i < drawCount; i++) {
+      const c = circles[i];
+      octx.beginPath();
+      octx.arc(c.x * scale, c.y * scale, Math.max(1, c.r * scale), 0, Math.PI * 2);
+      octx.fillStyle = `hsl(${c.hue},28%,34%)`;
+      octx.fill();
+    }
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(offscreen, 0, 0, W, H);
+    ctx.fillStyle = 'rgba(239,68,68,0.05)';
+    ctx.fillRect(0, 0, W, H);
+
+  } else {
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#080808';
+    ctx.fillRect(0, 0, W, H);
+
+    for (let i = 0; i < drawCount; i++) {
+      const c = circles[i];
+
+      if (qualityTier === 2) {
+        // HIGH: glow + animated hue
+        ctx.shadowBlur  = 22;
+        ctx.shadowColor = `hsl(${c.hue},80%,55%)`;
+        ctx.fillStyle   = `hsl(${c.hue},75%,62%)`;
+      } else {
+        // MED: distinct per-ball hue, no shadow
+        ctx.fillStyle = `hsl(${c.hue},55%,52%)`;
+      }
+
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+  }
+
+  // Tier indicator bar — bottom edge of canvas
+  ctx.fillStyle = TIER_INDICATOR_COLORS[qualityTier] + '55';
+  ctx.fillRect(0, H - 3, W, 3);
+}
+
+function loop() {
+  if (!paused) renderFrame();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+
+// ─── 3. IMPULZ WIRING ──────────────────────────────────────────────────────
+
+const pulse = createPulse();
+
+const TIER_LABELS  = ['LOW', 'MED', 'HIGH'];
+const TIER_CLASSES = ['red', 'amber', 'green'];
+
+let hiddenAt       = null;
+let modalRafId     = null;
+// Timestamp before which upgrades are blocked after a downgrade.
+// Prevents the classic bounce: quality drops → fps rises → quality restores → repeat.
+let tierLockedUntil = 0;
+
+// — Visibility ——————————————————————————————————————————————————————————————
+pulse.on('visibility', (visible) => {
+  if (!visible) {
+    hiddenAt = Date.now();
+    addLog(`<span class="warn">Tab hidden</span> — animation paused`);
+  } else {
+    const awayMs = hiddenAt ? Date.now() - hiddenAt : 0;
+    const awayS  = Math.round(awayMs / 1000);
+    hiddenAt = null;
+    addLog(`<span class="hl">Tab visible</span>${awayMs >= 1000 ? ` — back after ${awayS}s` : ''}`);
+    if (awayMs >= 1000) showModal(awayS);
+  }
+  setStat('tab', visible ? 'VISIBLE' : 'HIDDEN', visible ? 'green' : 'red');
+});
+
+// — FPS display (raw, no threshold) ————————————————————————————————————————
+pulse.on('fps', (fps) => {
+  const cls = fps >= 100 ? 'green' : fps >= 60 ? 'amber' : 'red';
+  setStat('fps', fps, cls);
+});
+
+// — FPS tier drops — fire at the LOWER bound so we react quickly ————————————
+pulse.on('fps', { below: 85, debounce: 1500 }, (fps) => {
+  if (qualityTier === 2) setTier(1, fps);            // HIGH → MED
+});
+pulse.on('fps', { below: 55, debounce: 1000 }, (fps) => {
+  if (qualityTier === 1) setTier(0, fps);            // MED  → LOW
+});
+
+// — FPS tier recovery — HIGHER bound + longer debounce + post-downgrade lock —
+// After a drop, quality decreases and fps naturally rises. The lock prevents
+// that FPS rebound from immediately triggering a re-upgrade.
+pulse.on('fps', { above: 100, debounce: 3000 }, (fps) => {
+  if (qualityTier === 1 && Date.now() > tierLockedUntil) setTier(2, fps);  // MED  → HIGH
+});
+pulse.on('fps', { above: 72, debounce: 2000 }, (fps) => {
+  if (qualityTier === 0 && Date.now() > tierLockedUntil) setTier(1, fps);  // LOW  → MED
+});
+
+// — Idle ————————————————————————————————————————————————————————————————————
+pulse.on('idle', { timeout: 4000 }, (isIdle) => {
+  if (isIdle) {
+    setStat('idle', 'IDLE', 'amber');
+    addLog(`<span class="warn">User idle</span> — flushing analytics buffer`);
+  } else {
+    setStat('idle', 'ACTIVE', 'green');
+  }
+});
+
+
+// ─── 4. UI / STATS PANEL ───────────────────────────────────────────────────
+
+
+// Slider — live particle count
+sliderEl.addEventListener('input', () => {
+  targetCount = parseInt(sliderEl.value, 10);
+  sliderValEl.textContent = targetCount;
+  setStat('particles', targetCount);
+  ensureCircles();
+});
+
+// Tier transition
+function setTier(newTier, fps) {
+  if (qualityTier === newTier) return;
+  const prevLabel = TIER_LABELS[qualityTier];
+  const prevTier  = qualityTier;
+  qualityTier = newTier;
+  // Lock upgrades for 5 s after any downgrade so the FPS rebound
+  // caused by reduced quality doesn't immediately re-trigger an upgrade.
+  if (newTier < prevTier) tierLockedUntil = Date.now() + 5000;
+  setStat('tier', TIER_LABELS[newTier], TIER_CLASSES[newTier]);
+  const dir = newTier > prevTier ? '↑' : '↓';
+  addLog(`Tier ${dir} <span class="${TIER_CLASSES[newTier]}">${TIER_LABELS[newTier]}</span> ← was ${prevLabel} @ ${fps} fps`);
+}
+
+// Stat element update
+function setStat(id, value, colorClass) {
+  const el = document.getElementById(`stat-${id}`);
+  el.textContent = value;
+  el.className   = `stat-value${colorClass ? ' ' + colorClass : ''}`;
+}
+
+// Log — newest first
+function addLog(html) {
+  const t = new Date().toLocaleTimeString('en', {
+    hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="log-time">${t}</span><span class="log-msg">${html}</span>`;
+  logEl.prepend(entry);
+}
+
+// Modal — shown when tab returns after >= 1s away
+function showModal(awaySeconds) {
+  paused = true;
+  cancelAnimationFrame(modalRafId);
+
+  modalAwayEl.textContent = `Away for ${awaySeconds}s`;
+  modalBarEl.style.width  = '100%';
+  modalEl.classList.add('active');
+
+  const DURATION = 5000;
+  const start = performance.now();
+
+  function tick(now) {
+    const elapsed  = now - start;
+    const progress = Math.min(1, elapsed / DURATION);
+    const remaining = Math.max(0, DURATION - elapsed);
+    modalBarEl.style.width = `${(1 - progress) * 100}%`;
+    modalCdEl.textContent  = `${(remaining / 1000).toFixed(1)}s remaining`;
+
+    if (progress < 1) {
+      modalRafId = requestAnimationFrame(tick);
+    } else {
+      modalEl.classList.remove('active');
+      setTimeout(() => { paused = false; }, 420);
+    }
+  }
+
+  modalRafId = requestAnimationFrame(tick);
+}
+
+// Boot
+addLog(`<span class="hl">impulz</span> started — ${targetCount} particles · tier <span class="green">${TIER_LABELS[qualityTier]}</span>`);
+
+  </script>
+</body>
+</html>
