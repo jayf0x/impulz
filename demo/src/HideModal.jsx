@@ -29,10 +29,16 @@ export function HideModal({ awayMs, onDone }) {
   const awayS = Math.round(awayMs / 1000)
 
   useEffect(() => {
-    startRef.current = performance.now()
+    // Accumulate time only between rAF frames — rAF pauses when the tab is
+    // hidden, but performance.now() keeps ticking, so wall-clock elapsed would
+    // jump forward when the user returns and instantly close the modal.
+    let elapsed = 0
+    let lastFrame = null
 
     function tick(now) {
-      const elapsed = now - startRef.current
+      if (lastFrame !== null) elapsed += now - lastFrame
+      lastFrame = now
+
       const pct = Math.max(0, 100 - (elapsed / DURATION) * 100)
       setProgress(pct)
       if (pct > 0) {

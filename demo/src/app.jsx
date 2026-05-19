@@ -129,7 +129,8 @@ export function App() {
           : 'Tab visible — resumed',
         '#4ade80',
       )
-      if (awayMs > 200) setModal({ awayMs })
+      // Don't restart modal if one is already counting down
+      if (awayMs > 200) setModal(prev => prev ?? { awayMs })
     }
   }, [visible])
 
